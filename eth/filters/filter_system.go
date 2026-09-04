@@ -163,6 +163,7 @@ const (
 	// TransactionReceiptsSubscription queries for transaction receipts when transactions are included in blocks
 	TransactionReceiptsSubscription
 	// LastIndexSubscription keeps track of the last index
+	FullBlockSubscription
 	LastIndexSubscription
 )
 
@@ -190,6 +191,7 @@ type subscription struct {
 	txHashes  map[common.Hash]bool // contains transaction hashes for transactionReceipts subscription filtering
 	installed chan struct{}        // closed when the filter is installed
 	err       chan error           // closed when the filter is uninstalled
+	newBlock  chan *types.NewBlockArgs
 }
 
 // EventSystem creates subscriptions, processes events and broadcasts them to the
@@ -384,6 +386,21 @@ func (es *EventSystem) SubscribeNewHeads(headers chan *types.Header) *Subscripti
 	return es.subscribe(sub)
 }
 
+func (es *EventSystem) SubscribeNewBlocks(newBlockChan chan *types.NewBlockArgs) *Subscription {
+	sub := &subscription{
+		id:        rpc.NewID(),
+		typ:       FullBlockSubscription,
+		created:   time.Now(),
+		logs:      make(chan []*types.Log),
+		txs:       make(chan []*types.Transaction),
+		headers:   make(chan *types.Header),
+		newBlock:  newBlockChan,
+		installed: make(chan struct{}),
+		err:       make(chan error),
+	}
+	return es.subscribe(sub)
+}
+
 // SubscribePendingTxs creates a subscription that writes transactions for
 // transactions that enter the transaction pool.
 func (es *EventSystem) SubscribePendingTxs(txs chan []*types.Transaction) *Subscription {
@@ -445,6 +462,10 @@ func (es *EventSystem) handleTxsEvent(filters filterIndex, ev core.NewTxsEvent) 
 }
 
 func (es *EventSystem) handleChainEvent(filters filterIndex, ev core.ChainEvent) {
+
+	for _, f := range filters[FullBlockSubscription] {
+		f.newBlock <- &types.NewBlockArgs{Header: ev.Header, Transactions: ev.Transactions, Receipts: ev.Receipts}
+	}
 	for _, f := range filters[BlocksSubscription] {
 		f.headers <- ev.Header
 	}

@@ -108,6 +108,12 @@ type Header struct {
 	RequestsHash *common.Hash `json:"requestsHash" rlp:"optional"`
 }
 
+type NewBlockArgs struct {
+	Header       *Header
+	Transactions Transactions
+	Receipts     []*Receipt
+}
+
 // field type overrides for gencodec
 type headerMarshaling struct {
 	Difficulty    *hexutil.Big

@@ -267,6 +267,43 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 	return rpcSub, nil
 }
 
+func (api *FilterAPI) NewBlocks(ctx context.Context) (*rpc.Subscription, error) {
+	notifier, supported := rpc.NotifierFromContext(ctx)
+	if !supported {
+		return &rpc.Subscription{}, rpc.ErrNotificationsUnsupported
+	}
+
+	rpcSub := notifier.CreateSubscription()
+
+	go func() {
+		headers := make(chan *types.NewBlockArgs)
+		headersSub := api.events.SubscribeNewBlocks(headers)
+		defer headersSub.Unsubscribe()
+		for {
+			select {
+			case h := <-headers:
+				ensureReceiptLogs(h.Receipts) // adjust field name
+				notifier.Notify(rpcSub.ID, h)
+			case <-rpcSub.Err():
+				return
+			}
+		}
+	}()
+
+	return rpcSub, nil
+}
+
+func ensureReceiptLogs(receipts []*types.Receipt) {
+	for _, r := range receipts {
+		if r == nil {
+			continue
+		}
+		if r.Logs == nil {
+			r.Logs = []*types.Log{}
+		}
+	}
+}
+
 // Logs creates a subscription that fires for all new log that match the given filter criteria.
 func (api *FilterAPI) Logs(ctx context.Context, crit FilterCriteria) (*rpc.Subscription, error) {
 	notifier, supported := rpc.NotifierFromContext(ctx)
